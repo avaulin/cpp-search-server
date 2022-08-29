@@ -183,9 +183,8 @@ public:
              [](const Document& lhs, const Document& rhs) {
                  if (abs(lhs.relevance - rhs.relevance) < FLOAT_COMPARE_THRESHOLD) {
                      return lhs.rating > rhs.rating;
-                 } else {
-                     return lhs.relevance > rhs.relevance;
                  }
+				 return lhs.relevance > rhs.relevance;
              });
         if (matched_documents.size() > MAX_RESULT_DOCUMENT_COUNT) {
             matched_documents.resize(MAX_RESULT_DOCUMENT_COUNT);
@@ -233,7 +232,7 @@ public:
 
 private:
     struct DocumentData {
-        int rating;
+        int rating = 0;
         DocumentStatus status;
     };
 
@@ -376,22 +375,10 @@ void TestAddDocument() {
 	// 2 docs
 	{
 		SearchServer server;
+		ASSERT_EQUAL(server.GetDocumentCount(), 0);
 		server.AddDocument(42, "cat in the city"s, DocumentStatus::ACTUAL, {1,2,3});
 		server.AddDocument(43, "dog in the city"s, DocumentStatus::ACTUAL, {1,2,3});
-		const auto found_docs = server.FindTopDocuments("city"s);
-		ASSERT_EQUAL(found_docs.size(),2);
-	}
-	// 5 out of 6
-	{
-		SearchServer server;
-		server.AddDocument(42, "cat in the city"s, DocumentStatus::ACTUAL, {1,2,3});
-		server.AddDocument(43, "dog in the city"s, DocumentStatus::ACTUAL, {1,2,3});
-		server.AddDocument(44, "pig in the city"s, DocumentStatus::ACTUAL, {1,2,3});
-		server.AddDocument(45, "lost in the city"s, DocumentStatus::ACTUAL, {1,2,3});
-		server.AddDocument(46, "rain in the city"s, DocumentStatus::ACTUAL, {1,2,3});
-		server.AddDocument(47, "ghost in the city"s, DocumentStatus::ACTUAL, {1,2,3});
-		const auto found_docs = server.FindTopDocuments("city"s);
-		ASSERT_EQUAL(found_docs.size(), 5);
+		ASSERT_EQUAL(server.GetDocumentCount(), 2);
 	}
 	// same id
 	{
@@ -399,11 +386,11 @@ void TestAddDocument() {
 		server.AddDocument(42, "cat in the city"s, DocumentStatus::ACTUAL, {1,2,3});
 		server.AddDocument(42, "dog in the city"s, DocumentStatus::ACTUAL, {1,2,3});
 		const auto found_docs = server.FindTopDocuments("city"s);
-		ASSERT_EQUAL(found_docs.size(), 1);
+		ASSERT_EQUAL(server.GetDocumentCount(), 1);
 	}
 }
 
-void TestMinusWords() {
+void TestExcludedDocumentsWithMinusWords() {
 	{
 		SearchServer server;
 		server.AddDocument(42, "cat in the city"s, DocumentStatus::ACTUAL, {1,2,3});
@@ -418,11 +405,12 @@ void TestDocumentMatching() {
 	{
 		SearchServer server;
 		server.AddDocument(42, "cat in the city"s, DocumentStatus::ACTUAL, {1,2,3});
-		const auto matching_result = server.MatchDocument("in city", 42);
-		const auto matched_words = get<0>(matching_result);
+		const auto [matched_words, status] = server.MatchDocument("in city", 42);
+		//const auto matched_words = get<0>(matching_result);
 		ASSERT_EQUAL(matched_words.size(),2);
 		vector<string> estimated_words = {"city"s, "in"s};
 		ASSERT_EQUAL(matched_words, estimated_words);
+		ASSERT_EQUAL(static_cast<int>(status), 0);
 	}
 	{
 		SearchServer server;
@@ -439,6 +427,18 @@ void TestDocumentMatching() {
 		const auto matching_result = server.MatchDocument("in city -cat", 42);
 		const auto matched_words = get<0>(matching_result);
 		ASSERT_EQUAL(matched_words.size(), 0);
+	}
+//	5 out of 6
+	{
+		SearchServer server;
+		server.AddDocument(42, "cat in the city"s, DocumentStatus::ACTUAL, {1,2,3});
+		server.AddDocument(43, "dog in the city"s, DocumentStatus::ACTUAL, {1,2,3});
+		server.AddDocument(44, "pig in the city"s, DocumentStatus::ACTUAL, {1,2,3});
+		server.AddDocument(45, "lost in the city"s, DocumentStatus::ACTUAL, {1,2,3});
+		server.AddDocument(46, "rain in the city"s, DocumentStatus::ACTUAL, {1,2,3});
+		server.AddDocument(47, "ghost in the city"s, DocumentStatus::ACTUAL, {1,2,3});
+		const auto found_docs = server.FindTopDocuments("city"s);
+		ASSERT_EQUAL(found_docs.size(), 5);
 	}
 }
 
@@ -463,8 +463,8 @@ void TestDocsRating() {
 		server.AddDocument(42, "cat in the city"s, DocumentStatus::ACTUAL, {1,2,3});
 		server.AddDocument(43, "dog in the city"s, DocumentStatus::ACTUAL, {100, 10, 100});
 		const auto found_docs = server.FindTopDocuments("city"s);
-		ASSERT_EQUAL(found_docs[0].rating, 70);
-		ASSERT_EQUAL(found_docs[1].rating, 2);
+		ASSERT_EQUAL(found_docs[0].rating, 70); // (100 + 10 + 100) / 3 = 70
+		ASSERT_EQUAL(found_docs[1].rating, 2); // (1 + 2 + 3) / 3 = 2
 	}
 }
 
@@ -492,33 +492,60 @@ void TestSearchWithStatus() {
 		ASSERT_EQUAL(found_docs.size(), 1);
 		ASSERT_EQUAL(found_docs[0].id, 55);
 	}
+	{
+		SearchServer server;
+		server.AddDocument(54, "dog in the city"s, DocumentStatus::ACTUAL, {1,2,3});
+		server.AddDocument(55, "dog in the city"s, DocumentStatus::IRRELEVANT, {100, 10, 100});
+		const auto found_docs = server.FindTopDocuments("dog"s, DocumentStatus::REMOVED);
+		ASSERT_EQUAL(found_docs.size(), 0);
+	}
 }
 
-void TestRalavanceAlgo() {
+void TestCalculateRalavance() {
 	{
 		SearchServer search_server;
-		search_server.AddDocument(0, "белый кот и модный ошейник"s,        DocumentStatus::ACTUAL, {8, -3});
-		search_server.AddDocument(1, "пушистый кот пушистый хвост"s,       DocumentStatus::ACTUAL, {7, 2, 7});
-		search_server.AddDocument(2, "ухоженный пёс выразительные глаза"s, DocumentStatus::ACTUAL, {5, -12, 2, 1});
-		search_server.AddDocument(3, "ухоженный скворец евгений"s,         DocumentStatus::BANNED, {9});
+		search_server.AddDocument(11, "белый кот и модный ошейник"s,        DocumentStatus::ACTUAL, {8, -3});
+		search_server.AddDocument(12, "пушистый кот пушистый хвост"s,       DocumentStatus::ACTUAL, {7, 2, 7});
+		search_server.AddDocument(13, "ухоженный пёс выразительные глаза"s, DocumentStatus::ACTUAL, {5, -12, 2, 1});
+		search_server.AddDocument(14, "ухоженный скворец евгений"s,         DocumentStatus::BANNED, {9});
 		const auto found_docs = search_server.FindTopDocuments("пушистый ухоженный кот"s);
 		ASSERT_EQUAL(found_docs.size(), 3);
 		ASSERT(found_docs[0].relevance - 0.866434 < FLOAT_COMPARE_THRESHOLD);
 		ASSERT(found_docs[1].relevance - 0.173287 < FLOAT_COMPARE_THRESHOLD);
 		ASSERT(found_docs[2].relevance - 0.138629 < FLOAT_COMPARE_THRESHOLD);
+		/* Логика расчета relevance (TF-IDF)
+		IDF слова = log(количество всех документов / количество документов где встречается слово)
+		IDF пушистый = log(4 / 1) = 1.38629
+		IDF ухоженный = log(4 / 2) = 0.693147
+		IDF кот = log(4 / 2) = 0.693147
+
+		TF слова в документе = количество этого слова в документе / количество слов в документе
+
+						док 11	док 12	док 13	док 14
+		TF пушистый      0       2/4     0        0
+		TF ухоженный     0        0     1/4      1/3
+		TF кот          1/4      1/4     0        0
+
+		TF-IDF документа = сумма произведений TF и IDF всех слов запроса
+		TF-IDF 11 = 0 + 0 + 0.25 *0.693147 = 0.173287
+		TF-IDF 12 = 0.5 * 1.38629 + 0 + 0.25 * 0.693147 = 0,693145 + 0,173287 = 0,866432
+		TF-IDF 13 = 0 + 0.25 * 0.693147 + 0 = 0,173287
+		TF-IDF 14 = 0 + 0.33333 * 0.693147 + 0 = 0,231049
+		 */
 	}
 }
+
 
 void TestSearchServer() {
 	RUN_TEST(TestExcludeStopWordsFromAddedDocumentContent);
 	RUN_TEST(TestAddDocument);
-	RUN_TEST(TestMinusWords);
+	RUN_TEST(TestExcludedDocumentsWithMinusWords);
 	RUN_TEST(TestDocumentMatching);
 	RUN_TEST(TestDocsSortByRelevance);
 	RUN_TEST(TestDocsRating);
 	RUN_TEST(TestSearchWithPredicate);
 	RUN_TEST(TestSearchWithStatus);
-	RUN_TEST(TestRalavanceAlgo);
+	RUN_TEST(TestCalculateRalavance);
 }
 
 
