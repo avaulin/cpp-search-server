@@ -170,7 +170,7 @@ set<string> MakeUniqueNonEmptyStrings(const StringContainer& strings) {
     set<string> non_empty_strings;
     for (const string& str : strings) {
         if (!IsValidWord(str)) {
-            throw invalid_argument("stop word got unacceptable symbols"s);
+            throw invalid_argument("stop word '" + str + "' got unacceptable symbols"s);
         }
         if (!str.empty()) {
             non_empty_strings.insert(str);
@@ -210,9 +210,6 @@ public:
         if (documents_.count(document_id) > 0) {
             throw invalid_argument("not unique id"s);
         }
-        if (!IsValidWord(document)) {
-            throw invalid_argument("document got unacceptable symbols"s);
-        }
 
         const auto words = SplitIntoWordsNoStop(document);
         const double inv_word_count = 1.0 / words.size();
@@ -229,7 +226,7 @@ public:
         auto matched_documents = FindAllDocuments(query, document_predicate);
 
         sort(matched_documents.begin(), matched_documents.end(), [](const Document& lhs, const Document& rhs) {
-            if (abs(lhs.relevance - rhs.relevance) < 1e-6) {
+            if (abs(lhs.relevance - rhs.relevance) < FLOAT_COMPARE_THRESHOLD) {
                 return lhs.rating > rhs.rating;
             } else {
                 return lhs.relevance > rhs.relevance;
@@ -301,7 +298,7 @@ private:
         vector<string> words;
         for (const string& word : SplitIntoWords(text)) {
             if (!IsValidWord(word)) {
-                throw invalid_argument("Invalid word"s);
+                throw invalid_argument("Invalid word '"s + word + "'"s);
             }
             if (!IsStopWord(word)) {
                 words.push_back(word);
@@ -314,11 +311,7 @@ private:
         if (ratings.empty()) {
             return 0;
         }
-        int rating_sum = 0;
-        for (const int rating : ratings) {
-            rating_sum += rating;
-        }
-        return rating_sum / static_cast<int>(ratings.size());
+        return accumulate(ratings.begin(), ratings.end(), 0) / static_cast<int>(ratings.size());
     }
 
     struct QueryWord {
@@ -607,7 +600,4 @@ int main() {
     // Если вы видите эту строку, значит все тесты прошли успешно
     cout << "Search server testing finished"s << endl;
 }
-
-
-
 
