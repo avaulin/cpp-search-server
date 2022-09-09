@@ -46,6 +46,12 @@ public:
             ++size_;
         }
 
+        if (begin > end) {
+            throw invalid_argument("begin > end"s);
+        } else if (page_size == 0) {
+            throw invalid_argument("page size must be greater then 0"s);
+        }
+
         for (int i=0; i < size_; ++i) {
             auto p_begin = next(begin, page_size * i);
             auto p_end = next(p_begin, page_size);

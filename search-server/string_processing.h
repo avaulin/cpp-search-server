@@ -7,9 +7,6 @@
 
 using namespace std;
 
-
-std::string ReadLine();
-int ReadLineWithNumber();
 std::vector<std::string> SplitIntoWords(const std::string& text);
 bool IsValidWord(const std::string& word);
 

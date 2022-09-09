@@ -6,19 +6,6 @@
 
 using namespace std;
 
-string ReadLine() {
-    string s;
-    getline(std::cin, s);
-    return s;
-}
-
-int ReadLineWithNumber() {
-    int result;
-    cin >> result;
-    ReadLine();
-    return result;
-}
-
 vector<string> SplitIntoWords(const string& text) {
     vector<string> words;
     string word;
