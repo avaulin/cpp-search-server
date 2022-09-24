@@ -12,6 +12,7 @@
 #include "document.h"
 #include "paginator.h"
 #include "string_processing.h"
+#include "log_duration.h"
 
 using namespace std;
 
@@ -35,6 +36,7 @@ public:
 
     template <typename DocumentPredicate>
     vector<Document> FindTopDocuments(const string& raw_query, DocumentPredicate document_predicate) const {
+        LOG_DURATION_STREAM("Результаты поиска по запросу: "s + raw_query);
         const auto query = ParseQuery(raw_query);
         auto matched_documents = FindAllDocuments(query, document_predicate);
 
@@ -52,10 +54,13 @@ public:
         return matched_documents;
     }
 
+    const map<string, double>& GetWordFrequencies(int document_id) const;
+    vector<int>::iterator begin();
+    vector<int>::iterator end();
     vector<Document> FindTopDocuments(const string& raw_query, DocumentStatus status) const;
     vector<Document> FindTopDocuments(const string& raw_query) const;
     int GetDocumentCount() const;
-    int GetDocumentId(int index) const;
+    // int GetDocumentId(int index) const;
     tuple<vector<string>, DocumentStatus> MatchDocument(const string& raw_query, int document_id) const;
 
 private:
@@ -67,6 +72,7 @@ private:
     };
     const set<string> stop_words_;
     map<string, map<int, double>> word_to_document_freqs_;
+    map<int, map<string, double>> document_to_word_freqs_;
     map<int, DocumentData> documents_;
     vector<int> document_ids_;
 

@@ -2,6 +2,7 @@
 #include "paginator.h"
 #include "string_processing.h"
 #include "search_server.h"
+#include "log_duration.h"
 
 
 SearchServer::SearchServer(const string& stop_words_text) : SearchServer(SplitIntoWords(stop_words_text)) {}
@@ -20,6 +21,7 @@ void SearchServer::AddDocument(int document_id, const string& document, Document
     const double inv_word_count = 1.0 / words.size();
     for (const string& word : words) {
         word_to_document_freqs_[word][document_id] += inv_word_count;
+        document_to_word_freqs_[document_id][word] += inv_word_count;
     }
     documents_.emplace(document_id, DocumentData{ComputeAverageRating(ratings), status});
     document_ids_.push_back(document_id);
@@ -39,11 +41,28 @@ int SearchServer::GetDocumentCount() const {
     return documents_.size();
 }
 
-int SearchServer::GetDocumentId(int index) const{
-    return document_ids_.at(index);
+// int SearchServer::GetDocumentId(int index) const{
+//     return document_ids_.at(index);
+// }
+
+const map<string, double>& SearchServer::GetWordFrequencies(int document_id) const {
+    if (document_to_word_freqs_.count(document_id)) {
+        return document_to_word_freqs_.at(document_id);
+    }
+    const map<string, double>& empty_map = {};
+    return empty_map;
+}
+
+vector<int>::iterator SearchServer::begin() {
+    return document_ids_.begin();
+}
+
+vector<int>::iterator SearchServer::end() {
+    return document_ids_.end();
 }
 
 tuple<vector<string>, DocumentStatus> SearchServer::MatchDocument(const string& raw_query, int document_id) const {
+    LOG_DURATION_STREAM("Матчинг документов по запросу: "s + raw_query);
     auto query = ParseQuery(raw_query);
     vector<string> matched_words;
     for (const string& word : query.plus_words) {
